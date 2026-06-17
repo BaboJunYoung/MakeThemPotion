@@ -40,6 +40,9 @@ FONT_PATHS = [
 FONT_PATH = next((path for path in FONT_PATHS if os.path.exists(path)), None)
 
 
+# customer1/2/3.png 에 고정된 캐릭터 이름 (이미지 인덱스 순서)
+CUSTOMER_CHAR_NAMES = ["패션의 남자", "일하는 광부", "남자3"]
+
 STREET_LINES = [
     ("주인공", "하아… 오늘도 평범한 하루네."),
     ("주인공", "과제는 많고, 시간은 없고…"),
@@ -306,7 +309,8 @@ class Game:
                                               name_size=21, body_size=23, next_size=16)
         self.dialogue.set_actor_rect("left", pygame.Rect(32, 92, 190, 345))
         self.dialogue.set_visual_style(char_rise=6, chars_per_second=23,
-                                       reveal_window=5.0)
+                                       reveal_window=5.0,
+                                       name_anchor=(0.165, 0.22))
         self.dialogue_key = None
         self.intro_started = False
         self.intro_phase = "street"
@@ -352,6 +356,18 @@ class Game:
         ]
         self.customer_images = [image for image in self.customer_images if image is not None]
         self.playful_cg = load_image("Lumiel_playful.png")
+        # 가마솥 이미지 (비율 유지, 너비 280px 기준 스케일)
+        self.cauldron_img = crop_to_content(load_image("cauldron.png"))
+        if self.cauldron_img:
+            _cw = 280
+            _ch = int(_cw * self.cauldron_img.get_height() / self.cauldron_img.get_width())
+            self.cauldron_img = pygame.transform.smoothscale(self.cauldron_img, (_cw, _ch))
+        # 포션 이미지 (RECIPES 순서: healing, sleep, luck, strength → potion1~4)
+        self.potion_images = {}
+        for _i, _rec in enumerate(gl.RECIPES, start=1):
+            _img = crop_to_content(load_image(f"potion{_i}.png"))
+            if _img:
+                self.potion_images[_rec["potion_id"]] = _img
         self.lumiel_talk_sound = None
         self.beep_sound = None
         self.street_ambience_sound = None
@@ -390,33 +406,33 @@ class Game:
         ih = int(iw / ar)
         self.intro_dialogue.set_box_rect(
             pygame.Rect((WIDTH - iw) // 2, HEIGHT - ih - 16, iw, ih))
-        # 플레이: 상단 주문 박스 (조금 작게)
+        # 플레이: 캐릭터(x≈14~214) 오른쪽에 배치해 겹침 방지
         pw = 580
         ph = int(pw / ar)
-        self.dialogue.set_box_rect(pygame.Rect((WIDTH - pw) // 2, 58, pw, ph))
+        self.dialogue.set_box_rect(pygame.Rect(240, 58, pw, ph))
 
     # --- 버튼 레이아웃 -----------------------------------------------------
     def _build_buttons(self):
-        # 재료 버튼 5개 (하단 가로 배치)
+        # 재료 버튼 5개 (하단 가로 배치 — 레시피 공간 확보를 위해 높이 축소)
         self.ingredient_buttons = []
         n = len(gl.INGREDIENTS)
-        bw, bh, gap = 150, 90, 14
+        bw, bh, gap = 148, 76, 12
         total = n * bw + (n - 1) * gap
         start_x = (WIDTH - total) // 2
-        y = 430
+        y = 426
         for i, ing in enumerate(gl.INGREDIENTS):
             rect = pygame.Rect(start_x + i * (bw + gap), y, bw, bh)
             self.ingredient_buttons.append((ing, rect))
 
-        # 액션 버튼
-        ay = 560
-        self.btn_clear = Button((start_x, ay, 230, 56), "초기화", self.font_md,
+        # 액션 버튼 (레시피 띠를 위해 y=528로 올림)
+        ay = 528
+        self.btn_clear = Button((start_x, ay, 224, 50), "초기화", self.font_md,
                                 color=(150, 110, 90), text_color=TEXT)
-        self.btn_craft = Button((start_x + 250, ay, 230, 56), "제작하기", self.font_md)
-        self.btn_submit = Button((start_x + 500, ay, 230, 56), "제출하기", self.font_md,
+        self.btn_craft = Button((start_x + 244, ay, 224, 50), "제작하기", self.font_md)
+        self.btn_submit = Button((start_x + 488, ay, 224, 50), "제출하기", self.font_md,
                                  color=GREEN, text_color=(20, 40, 20))
-        self.btn_next = Button((WIDTH // 2 - 120, 470, 240, 58), "다음 손님", self.font_md)
-        self.btn_advance = Button((WIDTH // 2 - 120, 470, 240, 58), "계속", self.font_md)
+        self.btn_next = Button((WIDTH // 2 - 120, 462, 240, 54), "다음 손님", self.font_md)
+        self.btn_advance = Button((WIDTH // 2 - 120, 462, 240, 54), "계속", self.font_md)
         self.btn_start = Button((WIDTH // 2 - 130, HEIGHT - 130, 260, 60),
                                 "시작", self.font_md)
 
@@ -435,6 +451,11 @@ class Game:
                 try:
                     self.lumiel_talk_sound = pygame.mixer.Sound(talk_path)
                     self.intro_dialogue.set_type_sound(
+                        self.lumiel_talk_sound,
+                        interval=3,
+                        volume=0.38,
+                    )
+                    self.dialogue.set_type_sound(
                         self.lumiel_talk_sound,
                         interval=3,
                         volume=0.38,
@@ -478,6 +499,11 @@ class Game:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit()
+                if (event.type == pygame.KEYDOWN
+                        and event.key == pygame.K_BACKQUOTE
+                        and self.scene in ("boot", "title", "title_fade", "intro")):
+                    self.skip_intro()
+                    continue
                 if (self.scene == "intro" and not self.is_intro_auto()
                         and self.intro_dialogue.handle_event(event)):
                     continue
@@ -590,13 +616,15 @@ class Game:
             self.dialogue_key = None
             return
 
+        # 이미지 파일 순서(customer1/2/3)에 고정된 캐릭터 이름 사용
+        char_name = CUSTOMER_CHAR_NAMES[st.current_index % len(CUSTOMER_CHAR_NAMES)]
+
         if st.phase == gl.PHASE_RESULT and st.last_result:
             res = st.last_result
-            cust = st.current_customer
             key = ("result", st.day, st.current_index, res["reaction"])
             if key != self.dialogue_key:
                 self.dialogue.set_script([de.DialogueLine(
-                    speaker=cust["customer"]["name"],
+                    speaker=char_name,
                     text=res["reaction"],
                     character_slot="left",
                     character_image=self.get_customer_image(st.current_index),
@@ -614,7 +642,7 @@ class Game:
         key = ("order", st.day, st.current_index, cust["order_line"])
         if key != self.dialogue_key:
             self.dialogue.set_script([de.DialogueLine(
-                speaker=cust["customer"]["name"],
+                speaker=char_name,
                 text=cust["order_line"],
                 character_slot="left",
                 character_image=self.get_customer_image(st.current_index),
@@ -664,6 +692,13 @@ class Game:
         self.collision_blackout_time = 0.0
         self.collision_dialogue_closed = False
         self.stop_street_ambience()
+
+    def skip_intro(self):
+        """` (backtick) 비밀 단축키: 인트로 전체를 즉시 스킵하고 플레이로 진입."""
+        self.stop_street_ambience()
+        self.intro_dialogue.clear()
+        self.scene = "play"
+        self.dialogue_key = None
 
     def waiting_for_collision_blackout(self):
         # 거리 장면이 끝나려면 암전이 완전히 덮인 뒤여야 한다 (street 노출 방지).
@@ -854,8 +889,10 @@ class Game:
 
         self.draw_customer()
         self.draw_cauldron()
+        self.draw_order_indicator()
         self.draw_ingredients(mouse_pos)
         self.draw_action_buttons(mouse_pos)
+        self.draw_recipe_reference()
 
         if self.state.phase == gl.PHASE_RESULT:
             self.draw_result_panel(mouse_pos)
@@ -878,51 +915,110 @@ class Game:
         cust = st.current_customer
         if not cust:
             return
-        # 전용 캐릭터 일러스트가 들어올 자리. 실제 캐릭터 렌더링과 전환은
-        # dialogue_engine.CharacterActor 가 담당한다.
-        shadow = pygame.Surface((220, 28), pygame.SRCALPHA)
-        pygame.draw.ellipse(shadow, (0, 0, 0, 65), shadow.get_rect())
-        self.screen.blit(shadow, (35, 385))
+        shadow = pygame.Surface((200, 22), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow, (0, 0, 0, 55), shadow.get_rect())
+        self.screen.blit(shadow, (14, HEIGHT - 28))
 
     def draw_cauldron(self):
         st = self.state
-        # 가마솥 본체
         cx, cy = WIDTH // 2, 330
-        pygame.draw.ellipse(self.screen, CAULDRON_RIM, (cx - 130, cy - 70, 260, 60))
-        pygame.draw.rect(self.screen, CAULDRON, (cx - 120, cy - 50, 240, 110),
-                         border_radius=20)
-        pygame.draw.ellipse(self.screen, (24, 24, 30), (cx - 110, cy - 62, 220, 44))
 
-        # 내용물 색 (제작된 포션 색 또는 선택 재료 혼합색)
-        liquid_color = None
-        if st.crafted_potion:
-            liquid_color = st.crafted_potion["color"]
-        elif st.selected:
-            cols = [gl.get_ingredient(i)["color"] for i in st.selected]
-            liquid_color = tuple(sum(c[k] for c in cols) // len(cols) for k in range(3))
-        if liquid_color:
-            pygame.draw.ellipse(self.screen, liquid_color, (cx - 95, cy - 56, 190, 34))
-
-        # 선택 재료 슬롯 2개
-        labels = ["?", "?"]
+        # 선택 재료 슬롯 2개 (가마솥 위쪽)
         for i in range(gl.MAX_INGREDIENTS):
             slot = pygame.Rect(cx - 120 + i * 130, 250, 110, 46)
             filled = i < len(st.selected)
-            color = gl.get_ingredient(st.selected[i])["color"] if filled else SLOT_EMPTY
-            pygame.draw.rect(self.screen, color, slot, border_radius=10)
+            ing_color = gl.get_ingredient(st.selected[i])["color"] if filled else SLOT_EMPTY
+            pygame.draw.rect(self.screen, ing_color, slot, border_radius=10)
             pygame.draw.rect(self.screen, CAULDRON_RIM, slot, 2, border_radius=10)
             if filled:
-                name = gl.get_ingredient(st.selected[i])["name"]
-                draw_text(self.screen, name, self.font_sm, (20, 18, 16),
-                          slot.centerx, slot.centery, center=True)
+                draw_text(self.screen, gl.get_ingredient(st.selected[i])["name"],
+                          self.font_sm, (20, 18, 16), slot.centerx, slot.centery, center=True)
 
-        # 제작된 포션 이름 표시
+        # 가마솥 이미지 (없으면 폴백 도형)
+        if self.cauldron_img:
+            self.screen.blit(self.cauldron_img, self.cauldron_img.get_rect(center=(cx, cy)))
+        else:
+            pygame.draw.ellipse(self.screen, CAULDRON_RIM, (cx - 130, cy - 70, 260, 60))
+            pygame.draw.rect(self.screen, CAULDRON, (cx - 120, cy - 50, 240, 110),
+                             border_radius=20)
+            pygame.draw.ellipse(self.screen, (24, 24, 30), (cx - 110, cy - 62, 220, 44))
+            lc = None
+            if st.crafted_potion:
+                lc = st.crafted_potion["color"]
+            elif st.selected:
+                cols = [gl.get_ingredient(ii)["color"] for ii in st.selected]
+                lc = tuple(sum(c[k] for c in cols) // len(cols) for k in range(3))
+            if lc:
+                pygame.draw.ellipse(self.screen, lc, (cx - 95, cy - 56, 190, 34))
+
+        # 완성 포션: 이미지를 가마솥 위에 띄우고 이름 표시
         if st.crafted_potion:
+            pid = st.crafted_potion["potion_id"]
+            pimg = self.potion_images.get(pid)
+            if pimg:
+                scaled = pygame.transform.smoothscale(pimg, (76, 76))
+                self.screen.blit(scaled, scaled.get_rect(center=(cx, cy - 16)))
             draw_text(self.screen, f"완성: {st.crafted_potion['name']}",
-                      self.font_lg, st.crafted_potion["color"], cx, 405, center=True)
+                      self.font_lg, st.crafted_potion["color"], cx, cy + 82, center=True)
         else:
             draw_text(self.screen, "재료 2개를 넣고 제작하세요", self.font_sm,
-                      TEXT_DIM, cx, 405, center=True)
+                      TEXT_DIM, cx, cy + 82, center=True)
+
+    def draw_recipe_reference(self):
+        """하단: 4가지 레시피를 2열로 항상 표시."""
+        ry = 586
+        rh = 88
+        panel = pygame.Rect(14, ry, WIDTH - 28, rh)
+        pygame.draw.rect(self.screen, PANEL, panel, border_radius=8)
+        pygame.draw.rect(self.screen, (100, 88, 76), panel, 1, border_radius=8)
+
+        draw_text(self.screen, "레시피", self.font_xs, TEXT_DIM, 28, ry + 10)
+
+        col_x = [90, 90 + (WIDTH - 104) // 2]
+        rows = [gl.RECIPES[:2], gl.RECIPES[2:]]
+        for row_i, row in enumerate(rows):
+            for col_i, recipe in enumerate(row):
+                x = col_x[col_i]
+                y = ry + 10 + row_i * 38
+                ings = [gl.get_ingredient(iid)["name"] for iid in recipe["ingredients"]]
+                label = f"{recipe['name']}: {ings[0]} + {ings[1]}"
+                # 포션 이름은 포션 색으로, 재료는 TEXT_DIM 으로 구분
+                draw_text(self.screen, recipe["name"] + ": ", self.font_xs,
+                          recipe["color"], x, y)
+                name_w = self.font_xs.size(recipe["name"] + ": ")[0]
+                draw_text(self.screen, f"{ings[0]} + {ings[1]}", self.font_xs,
+                          TEXT_DIM, x + name_w, y)
+
+    def draw_order_indicator(self):
+        """우측 패널: 현재 손님이 원하는 포션을 이미지+이름으로 명확히 표시."""
+        st = self.state
+        if st.phase not in (gl.PHASE_ORDER, gl.PHASE_BREWING, gl.PHASE_CRAFTED):
+            return
+        cust = st.current_customer
+        if not cust:
+            return
+        recipe = gl.get_recipe(cust["target_potion"])
+        if not recipe:
+            return
+
+        pw, ph = 160, 170
+        px, py = WIDTH - pw - 14, 258
+        panel = pygame.Rect(px, py, pw, ph)
+        pygame.draw.rect(self.screen, PANEL, panel, border_radius=12)
+        pygame.draw.rect(self.screen, ACCENT, panel, 2, border_radius=12)
+
+        draw_text(self.screen, "손님 주문", self.font_xs, TEXT_DIM,
+                  panel.centerx, py + 16, center=True)
+
+        pimg = self.potion_images.get(recipe["potion_id"])
+        if pimg:
+            big = pygame.transform.smoothscale(pimg, (84, 84))
+            self.screen.blit(big, big.get_rect(center=(panel.centerx, py + 88)))
+        else:
+            pygame.draw.circle(self.screen, recipe["color"], (panel.centerx, py + 88), 38)
+
+        draw_text(self.screen, recipe["name"], self.font_sm, TEXT,
+                  panel.centerx, py + 148, center=True)
 
     def draw_ingredients(self, mouse_pos):
         st = self.state

@@ -42,7 +42,7 @@ CUSTOMERS = [
     {"id": "sleepy_student", "name": "졸린 마법 학생", "orders": ["sleep"]},
     {"id": "unlucky_merchant", "name": "운 없는 상인", "orders": ["luck"]},
     {"id": "timid_knight", "name": "겁 많은 기사", "orders": ["strength", "luck"]},
-    {"id": "tired_miner", "name": "지친 광부", "orders": ["strength", "healing"]},
+    {"id": "tired_miner", "name": "일하는 광부", "orders": ["strength", "healing"]},
     {"id": "suspicious_visitor", "name": "수상한 손님", "orders": ["sleep", "luck"]},
 ]
 
@@ -192,6 +192,36 @@ def evaluate(crafted_potion_id, target_potion_id):
 
 
 # ---------------------------------------------------------------------------
+# 손님 대기 스택 (프로젝트 조건: LIFO 스택 구조)
+# ---------------------------------------------------------------------------
+
+class CustomerStack:
+    """손님 대기 스택.
+
+    generate_day_customers() 결과를 역순으로 쌓아 pop() 시 원래 순서(튜토리얼
+    고정 포함)대로 손님이 나오게 한다.
+    """
+
+    def __init__(self, customers):
+        # 첫 손님이 꼭대기에 오도록 역순 push
+        self._data = list(reversed(customers))
+
+    def peek(self):
+        """꼭대기 손님을 반환 (꺼내지 않음)."""
+        return self._data[-1] if self._data else None
+
+    def pop(self):
+        """꼭대기 손님을 꺼낸다."""
+        return self._data.pop() if self._data else None
+
+    def __len__(self):
+        return len(self._data)
+
+    def is_empty(self):
+        return not self._data
+
+
+# ---------------------------------------------------------------------------
 # 게임 상태 (전체 흐름 관리, 렌더링 없음)
 # ---------------------------------------------------------------------------
 
@@ -204,8 +234,10 @@ class GameState:
 
     # --- 하루 시작 ---------------------------------------------------------
     def start_day(self):
-        self.customers_today = generate_day_customers(self.day, self.rng)
-        self.current_index = 0
+        customers = generate_day_customers(self.day, self.rng)
+        self.customer_stack = CustomerStack(customers)
+        self._total_customers = len(customers)
+        self._served = 0
         self.gold_today = 0
         self.day_success = False
         self._reset_brewing()
@@ -223,13 +255,16 @@ class GameState:
 
     @property
     def total_customers(self):
-        return len(self.customers_today)
+        return self._total_customers
+
+    @property
+    def current_index(self):
+        """현재까지 응대한 손님 수 (이미지/이름 선택 기준)."""
+        return self._served
 
     @property
     def current_customer(self):
-        if 0 <= self.current_index < len(self.customers_today):
-            return self.customers_today[self.current_index]
-        return None
+        return self.customer_stack.peek()
 
     def can_craft(self):
         return self.phase in (PHASE_ORDER, PHASE_BREWING) and len(self.selected) == MAX_INGREDIENTS
@@ -287,13 +322,14 @@ class GameState:
         return True
 
     def next_customer(self):
-        """다음 손님으로 이동. 마지막이면 정산으로."""
+        """스택에서 손님을 꺼내고 다음으로 이동. 빈 스택이면 정산."""
         if self.phase != PHASE_RESULT:
             return False
-        self.current_index += 1
+        self.customer_stack.pop()
+        self._served += 1
         self._reset_brewing()
         self.last_result = None
-        if self.current_index >= self.total_customers:
+        if self.customer_stack.is_empty():
             self.day_success = self.gold_today >= self.goal
             self.phase = PHASE_DAY_END
         else:

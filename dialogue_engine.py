@@ -164,7 +164,7 @@ class DialogueController:
         self.type_sound = None
         self.type_sound_interval = 2
         self.type_sound_volume = 0.45
-        self.last_sound_step = 0
+        self.last_sound_step = -1
         self.current_key = None
 
         self.actors = {
@@ -258,11 +258,11 @@ class DialogueController:
         self.transition_time = 0.0
         self.close_time = 0.0
         self.type_time = 0.0
-        self.last_sound_step = 0
+        self.last_sound_step = -1
 
     def _restart_text(self):
         self.type_time = 0.0
-        self.last_sound_step = 0
+        self.last_sound_step = -1
 
     def _current_line(self):
         if not self.visible or not self.lines:

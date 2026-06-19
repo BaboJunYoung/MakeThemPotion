@@ -154,6 +154,9 @@ DAY_CONFIG = {
 # Day 4+ 공통 설정: 15종 전체 랜덤 등장
 DAY_DEFAULT = {"customers": 5, "potions": [r["potion_id"] for r in RECIPES], "goal": 50}
 
+# 이 날까지 모두 성공하면 게임 클리어(성공 화면).
+FINAL_DAY = 3
+
 REWARD_CORRECT = 10
 REWARD_WRONG = 2
 
@@ -561,10 +564,17 @@ class GameState:
         return True
 
     def advance_day(self):
-        """정산 후 진행: 성공이면 다음 날, 실패면 같은 날 재도전."""
+        """정산 후 진행: 성공이면 다음 날, 실패면 같은 날 재도전.
+
+        마지막 날(FINAL_DAY)까지 성공하면 게임 클리어(성공 화면)로 끝낸다.
+        """
         if self.phase != PHASE_DAY_END:
             return False
         if self.day_success:
+            if self.day >= FINAL_DAY:
+                self.phase = PHASE_GAME_OVER
+                self.ending = "win"
+                return True
             self.day += 1
         self.start_day()
         return True

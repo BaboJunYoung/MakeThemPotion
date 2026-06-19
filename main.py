@@ -567,7 +567,8 @@ class Game:
                     pygame.mixer.music.stop()
                 except pygame.error:
                     pass
-                self.play_sfx("caught")
+                # 성공 엔딩은 밝은 소리, 실패/적발은 caught 브금
+                self.play_sfx("correct" if st.ending in ("win", "clear") else "caught")
                 self._game_over_played = True
         else:
             self._game_over_played = False
@@ -1345,7 +1346,11 @@ class Game:
         overlay.fill((8, 6, 6, 215))
         self.screen.blit(overlay, (0, 0))
 
-        if st.ending == "clear":
+        if st.ending == "win":
+            title, color = "Day 3 클리어! 게임 성공", GREEN
+            lines = ["사흘간의 영업을 모두 무사히 마쳤다!",
+                     "루미엘의 포션 가게를 끝까지 지켜냈다."]
+        elif st.ending == "clear":
             title, color = "가게를 지켰다!", GREEN
             lines = ["제한 시간 안에 월세를 모두 갚았다.",
                      "루미엘의 포션 가게는 오늘도 무사하다."]
